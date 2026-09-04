@@ -1,0 +1,45 @@
+name: Scrape BNI
+
+on:
+  schedule:
+    # 23:30 UTC = 06:00 Myanmar time (UTC+6:30, no DST) the following day.
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape listing and articles
+        run: python3 scrape.py
+
+      - name: Extract structured rows
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python3 extract.py
+
+      - name: Commit CSVs if they changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add articles.csv extracted.csv
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            # Yangon date, not UTC: the 23:30 UTC run is already the next day there.
+            git commit -m "Update BNI data for $(TZ=Asia/Yangon date +'%Y-%m-%d')"
+            git push
+          fi
